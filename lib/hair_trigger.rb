@@ -75,7 +75,7 @@ module HairTrigger
         end
       end
       
-      migrations = migrations.sort_by{|(migration, triggers)| migration.version} unless options[:schema_rb_first]
+      migrations = migrations.sort_by{|(migration, _)| migration.version} unless options[:schema_rb_first]
   
       all_builders = []
       migrations.each do |(migration, triggers)|
@@ -83,7 +83,7 @@ module HairTrigger
           # if there is already a trigger with this name, delete it since we are
           # either dropping it or replacing it
           new_trigger.prepare!
-          all_builders.delete_if{ |(n, t)| t.prepared_name == new_trigger.prepared_name }
+          all_builders.delete_if{ |(_, t)| t.prepared_name == new_trigger.prepared_name }
           all_builders << [migration.name, new_trigger] unless new_trigger.options[:drop]
         end
       end
@@ -158,12 +158,17 @@ end
 
     def infer_migration_name(migration_names, create_triggers, drop_triggers)
       migration_base_name = if create_triggers.size > 0
+        tables_events = create_triggers.inject(Hash.new { |h,k| h[k] = Set.new }) do |memo, trigger|
+          memo[trigger.options[:table]] += trigger.options[:events]
+          memo
+        end
+
         ("create trigger#{create_triggers.size > 1 ? 's' : ''} " +
-         create_triggers.map{ |t| [t.options[:table], t.options[:events].join(" ")].join(" ") }.join(" and ")
-        ).downcase.gsub(/[^a-z0-9_]/, '_').gsub(/_+/, '_').camelize
+         tables_events.map { |table, events| [table, events.to_a.join('')].join(' ') }.join(' ')
+        ).downcase.gsub(/[^a-z1-9_]/, '_').gsub(/_+/, '_').camelize
       else
         ("drop trigger#{drop_triggers.size > 1 ? 's' : ''} " +
-         drop_triggers.map{ |t| t.options[:table] }.join(" and ")
+         drop_triggers.map{ |t| t.options[:table] }.uniq.join(" and ")
         ).downcase.gsub(/[^a-z0-9_]/, '_').gsub(/_+/, '_').camelize
       end
 
@@ -171,7 +176,7 @@ end
       while migration_names.include?("#{migration_base_name}#{name_version}")
         name_version = name_version.to_i + 1
       end
-      migration_name = "#{migration_base_name}#{name_version}"
+      "#{migration_base_name}#{name_version}" # migration_name
     end
 
     def infer_migration_version(migration_name)
