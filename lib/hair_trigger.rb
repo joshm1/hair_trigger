@@ -163,14 +163,18 @@ end
           memo
         end
 
-        ("create trigger#{create_triggers.size > 1 ? 's' : ''} " +
-         tables_events.map { |table, events| [table, events.to_a.join('')].join(' ') }.join(' ')
-        ).downcase.gsub(/[^a-z1-9_]/, '_').gsub(/_+/, '_').camelize
+        events_shortener = proc do |events|
+          # shortens events to the first character of the event; e.g.,
+          # "delete" => "d", "insert" => "i", "update" => "u"
+          events.reduce('') { |acc,e| "#{acc}#{e.to_s[0]}" }
+        end
+
+        "create trigger#{create_triggers.size > 1 ? 's' : ''} " +
+          tables_events.map { |table, events| [table, events_shortener.call(events)].join(' ') }.join(' ')
       else
-        ("drop trigger#{drop_triggers.size > 1 ? 's' : ''} " +
-         drop_triggers.map{ |t| t.options[:table] }.uniq.join(" and ")
-        ).downcase.gsub(/[^a-z0-9_]/, '_').gsub(/_+/, '_').camelize
-      end
+        "drop trigger#{drop_triggers.size > 1 ? 's' : ''} " +
+          drop_triggers.map{ |t| t.options[:table] }.uniq.join(" and ")
+      end.downcase.gsub(/[^a-z1-9_]/, '_').gsub(/_+/, '_').camelize
 
       name_version = nil
       while migration_names.include?("#{migration_base_name}#{name_version}")
